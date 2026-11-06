@@ -4,19 +4,22 @@ import model.User;
 import model.Task;
 import service.TaskService;
 
+import ui.components.TaskTablePanel;
+import ui.components.TaskStatsPanel;
+import ui.dialog.TaskDialog;
+
 import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.sql.SQLException;
-import java.time.LocalDate;
 import java.util.List;
 
 public class Dashboard extends JFrame {
 
     private User user;
     private TaskService taskService;
-    private JTable taskTable;
-    private DefaultTableModel tableModel;
+
+    private TaskTablePanel taskTablePanel;
+    private TaskStatsPanel taskStatsPanel;
 
     private List<Task> tasks;
 
@@ -26,7 +29,8 @@ public class Dashboard extends JFrame {
         this.taskService = new TaskService();
 
         setTitle("To-Do List Dashboard");
-        setSize(900, 600);
+        setSize(1050, 700);
+        setMinimumSize(new Dimension(850, 550));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -34,19 +38,25 @@ public class Dashboard extends JFrame {
         loadTasks();
     }
 
+    // CREATE DASHBOARD
     private void createUI() {
 
         setLayout(new BorderLayout(10, 10));
 
         // HEADER
         JPanel header = new JPanel(new BorderLayout());
-        header.setBorder(BorderFactory.createEmptyBorder(15, 20, 15, 20));
+
+        header.setBorder(
+            BorderFactory.createEmptyBorder(15, 20, 15, 20)
+        );
 
         JLabel welcomeLabel = new JLabel(
             "Welcome, " + user.getUsername() + "!"
         );
 
-        welcomeLabel.setFont(new Font("Arial", Font.BOLD, 22));
+        welcomeLabel.setFont(
+            new Font("Arial", Font.BOLD, 22)
+        );
 
         JButton logoutButton = new JButton("Logout");
 
@@ -57,44 +67,35 @@ public class Dashboard extends JFrame {
 
         add(header, BorderLayout.NORTH);
 
-        // TASK TABLE
-        String[] columns = {
-            "Task ID",
-            "Title",
-            "Description",
-            "Priority",
-            "Due Date",
-            "Status"
-        };
+        // STATISTICS
+        taskStatsPanel = new TaskStatsPanel();
 
-        tableModel = new DefaultTableModel(columns, 0) {
+        // TASK TABLE, SEARCH AND FILTERS
+        taskTablePanel = new TaskTablePanel();
 
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-
-        taskTable = new JTable(tableModel);
-        taskTable.setRowHeight(28);
-        taskTable.setSelectionMode(
-            ListSelectionModel.SINGLE_SELECTION
+        JPanel centerPanel = new JPanel(
+            new BorderLayout(10, 10)
         );
 
-        JScrollPane scrollPane = new JScrollPane(taskTable);
-
-        JPanel centerPanel = new JPanel(new BorderLayout());
         centerPanel.setBorder(
             BorderFactory.createEmptyBorder(10, 20, 10, 20)
         );
 
-        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        centerPanel.add(
+            taskStatsPanel,
+            BorderLayout.NORTH
+        );
+
+        centerPanel.add(
+            taskTablePanel,
+            BorderLayout.CENTER
+        );
 
         add(centerPanel, BorderLayout.CENTER);
 
         // BUTTONS
         JPanel buttonPanel = new JPanel(
-            new FlowLayout(FlowLayout.CENTER, 15, 15)
+            new FlowLayout(FlowLayout.CENTER, 12, 15)
         );
 
         JButton addButton = new JButton("Add Task");
@@ -118,36 +119,20 @@ public class Dashboard extends JFrame {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    // LOAD TASKS FROM DATABASE
+    // LOAD TASKS
     private void loadTasks() {
 
         try {
 
             tasks = taskService.getTasks(user.getUserId());
 
-            tableModel.setRowCount(0);
-
-            for (Task task : tasks) {
-
-                tableModel.addRow(new Object[] {
-                    task.getTaskId(),
-                    task.getTitle(),
-                    task.getDescription(),
-                    task.getPriority(),
-                    task.getDueDate() == null
-                        ? "Not set"
-                        : task.getDueDate(),
-                    task.getStatus()
-                });
-            }
+            taskStatsPanel.updateStatistics(tasks);
+            taskTablePanel.setTasks(tasks);
 
         } catch (SQLException e) {
 
-            JOptionPane.showMessageDialog(
-                this,
-                "Unable to load tasks!\n" + e.getMessage(),
-                "Database Error",
-                JOptionPane.ERROR_MESSAGE
+            showError(
+                "Unable to load tasks!\n" + e.getMessage()
             );
         }
     }
@@ -155,7 +140,11 @@ public class Dashboard extends JFrame {
     // ADD TASK
     private void addTask() {
 
-        Task task = showTaskDialog(null);
+        Task task = TaskDialog.showDialog(
+            this,
+            null,
+            user.getUserId()
+        );
 
         if (task == null) {
             return;
@@ -182,23 +171,30 @@ public class Dashboard extends JFrame {
     // EDIT TASK
     private void editTask() {
 
-        int row = taskTable.getSelectedRow();
+        int taskId = taskTablePanel.getSelectedTaskId();
 
-        if (row == -1) {
+        if (taskId == -1) {
+
             showError("Please select a task to edit.");
             return;
         }
 
-        int taskId = (int) tableModel.getValueAt(row, 0);
-
         Task selectedTask = findTask(taskId);
 
         if (selectedTask == null) {
+
             showError("Task not found.");
             return;
         }
 
-        Task updatedTask = showTaskDialog(selectedTask);
+        // Work on a copy until the user saves successfully
+        Task editableTask = copyTask(selectedTask);
+
+        Task updatedTask = TaskDialog.showDialog(
+            this,
+            editableTask,
+            user.getUserId()
+        );
 
         if (updatedTask == null) {
             return;
@@ -225,14 +221,13 @@ public class Dashboard extends JFrame {
     // DELETE TASK
     private void deleteTask() {
 
-        int row = taskTable.getSelectedRow();
+        int taskId = taskTablePanel.getSelectedTaskId();
 
-        if (row == -1) {
+        if (taskId == -1) {
+
             showError("Please select a task to delete.");
             return;
         }
-
-        int taskId = (int) tableModel.getValueAt(row, 0);
 
         int choice = JOptionPane.showConfirmDialog(
             this,
@@ -248,7 +243,8 @@ public class Dashboard extends JFrame {
         try {
 
             if (taskService.deleteTask(
-                    taskId, user.getUserId())) {
+                    taskId,
+                    user.getUserId())) {
 
                 JOptionPane.showMessageDialog(
                     this,
@@ -264,21 +260,21 @@ public class Dashboard extends JFrame {
         }
     }
 
-    // MARK TASK COMPLETED OR PENDING
+    // TOGGLE TASK STATUS
     private void toggleStatus() {
 
-        int row = taskTable.getSelectedRow();
+        int taskId = taskTablePanel.getSelectedTaskId();
 
-        if (row == -1) {
+        if (taskId == -1) {
+
             showError("Please select a task.");
             return;
         }
 
-        int taskId = (int) tableModel.getValueAt(row, 0);
-
         Task task = findTask(taskId);
 
         if (task == null) {
+
             showError("Task not found.");
             return;
         }
@@ -287,16 +283,18 @@ public class Dashboard extends JFrame {
 
             boolean success;
 
-            if (task.getStatus().equals("PENDING")) {
+            if ("PENDING".equals(task.getStatus())) {
 
                 success = taskService.markCompleted(
-                    taskId, user.getUserId()
+                    taskId,
+                    user.getUserId()
                 );
 
             } else {
 
                 success = taskService.markPending(
-                    taskId, user.getUserId()
+                    taskId,
+                    user.getUserId()
                 );
             }
 
@@ -316,110 +314,7 @@ public class Dashboard extends JFrame {
         }
     }
 
-    // TASK ADD / EDIT DIALOG
-    private Task showTaskDialog(Task existingTask) {
-
-        boolean editing = existingTask != null;
-
-        JTextField titleField = new JTextField(
-            editing ? existingTask.getTitle() : ""
-        );
-
-        JTextArea descriptionArea = new JTextArea(
-            editing ? existingTask.getDescription() : "",
-            4,
-            20
-        );
-
-        descriptionArea.setLineWrap(true);
-        descriptionArea.setWrapStyleWord(true);
-
-        JComboBox<String> priorityBox = new JComboBox<>(
-            new String[] {"LOW", "MEDIUM", "HIGH"}
-        );
-
-        if (editing) {
-            priorityBox.setSelectedItem(
-                existingTask.getPriority()
-            );
-        } else {
-            priorityBox.setSelectedItem("MEDIUM");
-        }
-
-        JTextField dueDateField = new JTextField(
-            editing && existingTask.getDueDate() != null
-                ? existingTask.getDueDate().toString()
-                : ""
-        );
-
-        JPanel panel = new JPanel(new GridLayout(0, 1, 5, 5));
-
-        panel.add(new JLabel("Task Title:"));
-        panel.add(titleField);
-
-        panel.add(new JLabel("Description:"));
-        panel.add(new JScrollPane(descriptionArea));
-
-        panel.add(new JLabel("Priority:"));
-        panel.add(priorityBox);
-
-        panel.add(new JLabel("Due Date (YYYY-MM-DD, optional):"));
-        panel.add(dueDateField);
-
-        int result = JOptionPane.showConfirmDialog(
-            this,
-            panel,
-            editing ? "Edit Task" : "Add Task",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.PLAIN_MESSAGE
-        );
-
-        if (result != JOptionPane.OK_OPTION) {
-            return null;
-        }
-
-        try {
-
-            String title = titleField.getText().trim();
-            String description = descriptionArea.getText().trim();
-            String priority = (String) priorityBox.getSelectedItem();
-
-            String dateText = dueDateField.getText().trim();
-
-            LocalDate dueDate = dateText.isEmpty()
-                ? null
-                : LocalDate.parse(dateText);
-
-            if (editing) {
-
-                existingTask.setTitle(title);
-                existingTask.setDescription(description);
-                existingTask.setPriority(priority);
-                existingTask.setDueDate(dueDate);
-
-                return existingTask;
-            }
-
-            return new Task(
-                user.getUserId(),
-                title,
-                description,
-                priority,
-                dueDate
-            );
-
-        } catch (Exception e) {
-
-            showError(
-                "Invalid input. Please check the due date format.\n" +
-                "Use YYYY-MM-DD, for example 2026-11-10."
-            );
-
-            return null;
-        }
-    }
-
-    // FIND TASK BY ID
+    // FIND TASK
     private Task findTask(int taskId) {
 
         if (tasks == null) {
@@ -434,6 +329,20 @@ public class Dashboard extends JFrame {
         }
 
         return null;
+    }
+
+    // COPY TASK
+    private Task copyTask(Task task) {
+
+        return new Task(
+            task.getTaskId(),
+            task.getUserId(),
+            task.getTitle(),
+            task.getDescription(),
+            task.getPriority(),
+            task.getDueDate(),
+            task.getStatus()
+        );
     }
 
     // LOGOUT
