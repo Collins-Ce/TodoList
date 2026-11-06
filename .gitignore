@@ -1,0 +1,21 @@
+# Java compiled files
+*.class
+out/
+target/
+
+# Libraries
+# Keep JDBC connector JARs if you choose to commit them.
+
+# VS Code
+.vscode/
+
+# IntelliJ
+.idea/
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+config.properties
