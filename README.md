@@ -16,8 +16,8 @@ A desktop-based **To-Do List Management System** built using Java Swing, JDBC, a
 ### Add Task
 ![Add Task](screenshots/add-task.png)
 
-### Edit Task
-![Edit Task](screenshots/edit-task.png)
+### Search Task
+![Edit Task](screenshots/task-management.png)
 
 ## ✨ Features
 
