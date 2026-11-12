@@ -29,7 +29,7 @@ public class UserDAO {
             if (rows > 0) {
                 try (ResultSet rs = ps.getGeneratedKeys()) {
                     if (rs.next()) {
-                        user.setUserId(rs.getInt(1));
+                        user.setUserId(rs.getInt("user_id"));
                     }
                 }
                 return true;
